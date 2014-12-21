@@ -21,9 +21,8 @@ use MT::App::CMS;
 
 my $cms_menus;
 my $os = lc $^O;
-my $peco = which 'peco' || which 'percol';
 
-my ($protocol, $host) = ('http', 'localhost');
+my ($protocol, $host, $peco) = ('http', 'localhost', (which 'peco' || which 'percol'));
 
 sub help {
     <<'HELP'
@@ -35,6 +34,8 @@ OPTIONS:
 
   --host=HOST          Set the host of admin screen url. (default: localhost)
 
+  --cmd=PATH           Set the peco (or percol) command path. (default: auto)
+
 HELP
 }
 
@@ -43,7 +44,7 @@ sub usage {
 }
 
 sub options {
-    ('protocol=s' => \$protocol, 'host=s' => \$host);
+    ('protocol=s' => \$protocol, 'host=s' => \$host, 'cmd=s' => \$peco);
 }
 
 sub main {

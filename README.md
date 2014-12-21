@@ -34,6 +34,10 @@ Set the host of admin screen url.
 
 Default is `localhost`.
 
+### --cmd=PATH
+
+Set the peco (or percol) command path. (default: auto)
+
 ## REQUIREMENTS
 
 ### COMMANDS
