@@ -7,7 +7,7 @@ MT::Tool::Launcher - The launcher of admin screen menus.
 ## USAGE
 
 ```sh
-$ cd $MT_HOME && ./tools/launcher --protocol=https --host=cms.example.com
+$ cd $MT_HOME && ./tools/launcher --protocol=https --host=cms.example.com --cmd=/path/to/peco
 ```
 
 ### EXAMPLE

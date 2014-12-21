@@ -40,7 +40,7 @@ HELP
 }
 
 sub usage {
-    "[--protocol=http] [--host=localhost]";
+    "[--protocol=https] [--host=cms.example.com] [--cmd=/path/to/peco]";
 }
 
 sub options {
