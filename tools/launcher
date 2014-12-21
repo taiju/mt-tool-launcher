@@ -1,0 +1,173 @@
+#!/usr/bin/perl
+package MT::Tool::Launcher;
+
+use strict;
+use warnings;
+
+use FindBin;
+use File::Spec;
+use IPC::Open2;
+use Encode qw(encode encode_utf8);
+use File::Which qw(which);
+
+BEGIN {
+    use Cwd qw(getcwd);
+    $ENV{MT_HOME} ||= getcwd;
+}
+
+use lib map { "$ENV{MT_HOME}/$_" } qw(lib extlib);
+use base qw(MT::Tool);
+use MT::App::CMS;
+
+my $cms_menus;
+my $os = lc $^O;
+my $peco = which 'peco' || which 'percol';
+
+my ($protocol, $host) = ('http', 'localhost');
+
+sub help {
+    <<'HELP'
+
+The launcher of admin screen menus.
+
+OPTIONS:
+  --protocol=PROTOCOL  Set the protocol of admin screen url. (default: http)
+
+  --host=HOST          Set the host of admin screen url. (default: localhost)
+
+HELP
+}
+
+sub usage {
+    "[--protocol=http] [--host=localhost]";
+}
+
+sub options {
+    ('protocol=s' => \$protocol, 'host=s' => \$host);
+}
+
+sub main {
+    shift->SUPER::main;
+    die "Can't find peco or percol." if !$peco || !(-f $peco && -x $peco);
+    undef $MT::mt_inst;
+    my $app = MT::App::CMS->instance;
+    $cms_menus = $app->registry('menus');
+    my @selected_blog_options = select_blog_options();
+    my @selected_menu_options = select_menu_options(@selected_blog_options);
+    open_with_browser($_) for build_links(\@selected_blog_options, \@selected_menu_options);
+}
+
+sub open_with_browser {
+    my $url = shift;
+    my $func_map = {
+        darwin => sub { ('open', shift) },
+        linux => sub { ('xdg-open', shift) },
+        mswin32 => sub { ('start', shift) },
+    };
+    {
+        $SIG{__WARN__} = sub {};
+        my $status = system $func_map->{$os}->($url);
+        if ($status == -1) {
+            print STDERR "Sorry, can't open with browser: $url\n";
+        }
+    }
+}
+
+sub base_url { "$protocol://$host" }
+
+sub can_display {
+    my $key = shift;
+    defined $cms_menus->{$key}->{display} ? $cms_menus->{$_}->{display} : 1;
+}
+
+sub can_view {
+    my ($key, $view) = @_;
+    my $menu_view = $cms_menus->{$key}->{view} || '';
+    ref $menu_view eq 'ARRAY' && (grep { $_ eq $view } @$menu_view) ? 1 : $menu_view eq $view ? 1 : 0;
+}
+
+sub exist_mode {
+    my $key = shift;
+    defined $cms_menus->{$key}->{mode};
+}
+
+sub build_links {
+    my ($selected_blog_options, $selected_menu_options) = @_;
+    my $app = MT->instance;
+    map {
+        my $selected_menu = $_;
+        my $menu = $cms_menus->{$selected_menu};
+        map {
+            my $selected_blog = $_;
+            if ($selected_blog =~ /^\[(\d+):/) {
+                $menu->{args}->{blog_id} = $1;
+            }
+            base_url() . $app->uri( mode => $menu->{mode}, args => $menu->{args});
+        } @$selected_blog_options;
+    } @$selected_menu_options;
+}
+
+sub build_blog_options {
+    my $app = MT->instance;
+    my $iter = $app->model('blog')->load_iter({ class => "*" },
+                                              { sort => 'id', direction => 'ascend' });
+    my @blog_options = ('[0:system] System');
+    while (my $blog = $iter->()) {
+        push @blog_options, sprintf "[%d:%s] %s", $blog->id, $blog->class, $blog->name;
+    }
+    @blog_options;
+}
+
+sub build_menu_options {
+    my @selected_blog_options = @_;
+    my $is_only = @selected_blog_options == 1 ? 1 : 0;
+    my $view;
+    if ($is_only) {
+        my $selected_blog_option = shift @selected_blog_options;
+        ($view) = $selected_blog_option =~ /^\[\d+:(system|website|blog)\]/;
+    }
+    grep { $is_only ? can_view($_, $view) : exist_mode($_) } grep { can_display($_) } sort keys %$cms_menus;
+}
+
+sub select_blog_options {
+    my @blog_options = build_blog_options();
+    my $buf = '';
+    $buf .= "$_\n" for @blog_options;
+    $buf = $os eq 'mswin32' ? encode('cp932', $buf) : encode_utf8($buf); # for blog_name
+    open my $fh, '<', \$buf;
+    my @selected_options = peco($fh, '--prompt=SELECT BLOGS>');
+    close $fh;
+    @selected_options;
+}
+
+sub select_menu_options {
+    my @blog_options = @_;
+    my @menu_options = build_menu_options(@blog_options);
+    my $buf = '';
+    $buf .= "$_\n" for @menu_options;
+    open my $fh, '<', \$buf;
+    my @selected_options = peco($fh, '--prompt=SELECT MENUS>');
+    close $fh;
+    @selected_options;
+}
+
+sub peco {
+    my ($fh, @args) = @_;
+    my ( $peco_out, $peco_in );
+    open2 $peco_out, $peco_in, $peco, @args;
+    while (<$fh>) {
+        print $peco_in $_;
+    }
+    close $peco_in;
+    my @selected;
+    while (<$peco_out>) {
+        chomp;
+        push @selected, $_;
+    }
+    close $peco_out;
+    @selected;
+}
+
+__PACKAGE__->main unless caller;
+
+1;
